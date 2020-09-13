@@ -1,13 +1,12 @@
 from random import random, shuffle
 from itertools import combinations
 from typing import Tuple, List, Dict
-import sys
 from copy import deepcopy
 
 
-class Board:
+class MSBoard:
     """
-    Board of n x x size, with cells with coordinates row, column.
+    Magic square board of n x n size, with cells with coordinates row, column.
     """
     def __init__(self, n):
         # check for valid value of n
@@ -67,28 +66,10 @@ class Board:
         """
         return sorted(list(self.free))
     
-    def put_n(self, n: int, coord: Tuple[int, int]) -> bool:
+    def n_fits_coord(self, n: int, coord: Tuple[int, int]) -> bool:
         """
-        Put number n into coordinate coord, if it fits. Then return True, False otherwise.
-        """
-        
-        def write(n, coord):
-            """
-            Write a number into cell with corresponding coordinate.
-            """
-            self.board[coord]["value"] = n
-            self.ns += 1
-            self.free.remove(n)
-            self.depleted.add(n)
-            for line_key in self.board[coord]["line_idx"]:
-                self.lines[line_key]["sum"] += n
-            if self.ns == self.n_top:
-                self.mss += 1
-                self.results[self.mss] = {}
-                self.results[self.mss]["board"] = deepcopy(self.board)
-                self.results[self.mss]["lines"] = deepcopy(self.lines)
-                print(f"Magic square no. {self.mss} found.")
-                
+        Tests if number n fits into coordinate coord, then return True, False otherwise.
+        """                
         # conditional check if n fits
         ordered_free_minus_n = self.ordered_free()
         ordered_free_minus_n.remove(n)
@@ -107,6 +88,7 @@ class Board:
             fits.append(False)
                    
         for i in range(len(sets_a)):
+            # pre-filter
             if 1 == ns_lefts[i]:
                 if n != diffs[i]:
                     return False
@@ -114,9 +96,10 @@ class Board:
                     fits[i] = True
                     continue
             else:
-                if (n + sum(ordered_free_minus_n[:ns_lefts[i] -1])) > diffs[i]:
+                if (n + sum(ordered_free_minus_n[:ns_lefts[i] -1])) > diffs[i] or \
+                    (n + sum(ordered_free_minus_n[-1 * ns_lefts[i] +1:])) < diffs[i]:
                     return False
-
+            # combinations search
             for cmb in arr_gens[i]:
                 if sum(cmb) == diffs[i]:
                     if n in cmb:
@@ -124,11 +107,7 @@ class Board:
                         break
                     
         if False not in fits:
-            write(n, coord)
-            if self.mss == self.lim:
-                raise InterruptedError(f"Limit of {self.lim} magic squares reached. Aborting program.")
             return True
-        
         return False
                                         
     def next_empty_key(self) -> Tuple[int, int]:
@@ -159,64 +138,49 @@ class Board:
             for c in [x for x in self.results[k]['lines'].keys() if x[0]== "c"]:
                 print(f"{self.results[k]['lines'][c]['sum']:^5}", end="")
             
-            
+    def write(self, n, coord):
+        """
+        Write a number into cell with corresponding coordinate.
+        """
+        self.board[coord]["value"] = n
+        self.ns += 1
+        self.free.remove(n)
+        self.depleted.add(n)
+        for line_key in self.board[coord]["line_idx"]:
+            self.lines[line_key]["sum"] += n
+        if self.ns == self.n_top:
+            self.mss += 1
+            self.results[self.mss] = {}
+            self.results[self.mss]["board"] = deepcopy(self.board)
+            self.results[self.mss]["lines"] = deepcopy(self.lines)
+            print(f"Magic square no. {self.mss} found.")
+
+    def backtrack(self, n, coord):
+        """
+        Reststore state of board to state prior to placing number.
+        """
+        self.board[coord]["value"] = 0
+        self.ns -= 1
+        self.free.add(n)
+        self.depleted.remove(n)
+        for line_key in self.board[coord]["line_idx"]:
+            self.lines[line_key]["sum"] -= n
+
     def put2coord(self, n: int, coord: Tuple[int, int]) -> None:
         """
         Start with given number and coordinate, and loop through free elements and call itself
         recursively on next empty cell.
-        """
-
-        def backtrack(n, coord):
-            """
-            Reststore state of board to state prior to placing number.
-            """
-            self.board[coord]["value"] = 0
-            self.ns -= 1
-            self.free.add(n)
-            self.depleted.remove(n)
-            for line_key in self.board[coord]["line_idx"]:
-                self.lines[line_key]["sum"] -= n
-              
+        """              
         if coord == (None, None):
             return
         
-        if self.put_n(n, coord):
+        if self.n_fits_coord(n, coord):
+            self.write(n, coord)
+            if self.mss == self.lim:
+                raise InterruptedError(f"Limit of {self.lim} magic squares reached. Aborting program.")
             choices = self.random_free()
             next_empty = self.next_empty_key()
             for el in choices:
                 self.put2coord(el, next_empty)
-            backtrack(n, coord)
+            self.backtrack(n, coord)
         return
-                
-    def solve(self, pre_puts: Tuple[int, Tuple[int, int]]=None, lim=None) -> None:
-        """
-        Start the recursive process with a number and coordinate.
-        Optional: Prefill board with chosen numbers in chosen coordinates.
-        """
-        if lim:
-            self.lim = lim
-        if pre_puts:
-            for n, coord in pre_puts:
-                self.put_n(n, coord)
-        start_coord = self.next_empty_key()        
-        try:
-            for n in self.random_free():
-                self.put2coord(n, start_coord)
-        except BaseException as e:
-            print(f"\n{e}\n")
-        finally:
-            print("Results:")
-            self.show()
-            print("\nFinished.")
-
-
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        raise SyntaxError("The program needs to get passed an argument for the order of magic square.")
-    b = Board(int(sys.argv[1]))
-
-    if len(sys.argv) >= 3:
-        b.solve(lim=int(sys.argv[2]))
-    else:
-        b.solve()
